@@ -67,8 +67,6 @@ This gives you:
 
 > **Important:** Your API key is valid for **90 minutes from first use**. The timer starts when you make your first API call. Plan your work accordingly.
 
-**API Documentation:** http://datasync-dev-alb-101078500.us-east-1.elb.amazonaws.com/docs/api.md
-
 ## Requirements
 
 ### Must Have
