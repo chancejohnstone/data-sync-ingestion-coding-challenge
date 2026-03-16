@@ -13,8 +13,10 @@
     "pg": "^8"
   },
   "devDependencies": {
+    "@types/nock": "^10.0.3",
     "@types/node": "*",
     "@types/pg": "*",
+    "nock": "^14.0.11",
     "tsx": "*",
     "typescript": "^5",
     "vitest": "^2"
