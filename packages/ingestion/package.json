@@ -4,7 +4,7 @@
   "main": "dist/main.js",
   "scripts": {
     "build": "tsc",
-    "test": "vitest run --exclude '**/*.integration.test.ts'",
+    "test": "vitest run",
     "test:integration": "vitest run --testPathPattern=integration",
     "start": "node dist/main.js"
   },
