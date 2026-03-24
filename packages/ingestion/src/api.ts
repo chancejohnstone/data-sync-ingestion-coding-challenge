@@ -17,6 +17,8 @@ export interface FetchEventsResponse {
   hasMore: boolean;
   nextCursor: string | null;
   cursorExpiresIn?: number; // seconds until cursor expires
+  rateLimitRemaining: number | null;
+  rateLimitReset: number | null;
 }
 
 export class CursorExpiredError extends Error {
@@ -92,11 +94,14 @@ export async function fetchEvents(
     headers: { 'X-API-Key': process.env.TARGET_API_KEY! },
   });
 
+  const rl = parseRateLimitHeaders(response.headers as Record<string, string>);
   return {
     data: response.data.data,
     hasMore: response.data.pagination.hasMore,
     nextCursor: response.data.pagination.nextCursor ?? null,
     cursorExpiresIn: response.data.pagination.cursorExpiresIn,
+    rateLimitRemaining: rl.remaining,
+    rateLimitReset: rl.reset,
   };
 }
 
