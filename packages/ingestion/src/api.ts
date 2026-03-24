@@ -47,7 +47,10 @@ function getClient(): AxiosInstance {
         return response;
       },
       async (error) => {
-        if (error.response?.status === 502) {
+        if (
+          error.response?.status === 502 ||
+          (error.response?.status === 400 && error.response?.data?.code === 'CURSOR_EXPIRED')
+        ) {
           throw new CursorExpiredError('Cursor expired (502 from server)');
         }
         if (error.response?.status === 429) {
