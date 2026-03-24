@@ -1,7 +1,8 @@
 import { loadCheckpoint, saveCheckpoint } from './checkpoint';
-import { fetchEvents } from './api';
+import { fetchEvents, CursorExpiredError } from './api';
 import { bulkInsert } from './insert';
 import { isCursorStale, getCursorThreshold } from './cursor';
+import { sleep } from './ratelimit';
 
 const BATCH_SIZE = parseInt(process.env.BATCH_SIZE ?? '100', 10);
 
@@ -17,7 +18,19 @@ export async function runWorker(): Promise<number> {
       cursorRefreshedAt = new Date();
     }
 
-    const response = await fetchEvents(cursor, BATCH_SIZE);
+    let response;
+    try {
+      response = await fetchEvents(cursor, BATCH_SIZE);
+    } catch (err) {
+      if (err instanceof CursorExpiredError) {
+        console.warn('[worker] Cursor expired (502), restarting from null cursor');
+        cursor = null;
+        cursorRefreshedAt = null;
+        continue;
+      }
+      throw err;
+    }
+
     const inserted = await bulkInsert(response.data);
     totalInserted += inserted;
 
@@ -29,6 +42,8 @@ export async function runWorker(): Promise<number> {
     await saveCheckpoint(cursor, totalInserted);
 
     if (!response.hasMore) break;
+
+    await sleep(6000); // 10 req/60s = 1 req/6s
   }
 
   return totalInserted;

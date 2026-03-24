@@ -29,9 +29,9 @@ services:
     environment:
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/ingestion
       API_BASE_URL: http://datasync-dev-alb-101078500.us-east-1.elb.amazonaws.com/api/v1
-      WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-5}
-      BATCH_SIZE: ${BATCH_SIZE:-100}
-      CURSOR_REFRESH_THRESHOLD: ${CURSOR_REFRESH_THRESHOLD:-60}
+      WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-1}
+      BATCH_SIZE: ${BATCH_SIZE:-5000}
+      CURSOR_REFRESH_THRESHOLD: ${CURSOR_REFRESH_THRESHOLD:-90}
     depends_on:
       postgres:
         condition: service_healthy

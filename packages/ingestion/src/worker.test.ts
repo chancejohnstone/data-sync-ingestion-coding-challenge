@@ -18,6 +18,10 @@ vi.mock('./cursor', () => ({
   getCursorThreshold: vi.fn(() => 60),
 }));
 
+vi.mock('./ratelimit', () => ({
+  sleep: vi.fn(() => Promise.resolve()),
+}));
+
 import { loadCheckpoint, saveCheckpoint } from './checkpoint';
 import { fetchEvents } from './api';
 import { bulkInsert } from './insert';

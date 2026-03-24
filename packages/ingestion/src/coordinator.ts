@@ -1,6 +1,6 @@
 import { runWorker } from './worker';
 
-const TARGET_EVENT_COUNT = 3_000_000;
+const TARGET_EVENT_COUNT = parseInt(process.env.TARGET_EVENT_COUNT ?? '3000000', 10);
 const CONCURRENCY = parseInt(process.env.WORKER_CONCURRENCY ?? '5', 10);
 const PROGRESS_INTERVAL_MS = 10_000;
 

@@ -12,6 +12,14 @@ export interface FetchEventsResponse {
   data: EventRecord[];
   hasMore: boolean;
   nextCursor: string | null;
+  cursorExpiresIn?: number; // seconds until cursor expires
+}
+
+export class CursorExpiredError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'CursorExpiredError';
+  }
 }
 
 let client: AxiosInstance | null = null;
@@ -33,6 +41,9 @@ function getClient(): AxiosInstance {
         return response;
       },
       async (error) => {
+        if (error.response?.status === 502) {
+          throw new CursorExpiredError('Cursor expired (502 from server)');
+        }
         if (error.response?.status === 429) {
           const attempt = error.config?._retryAttempt ?? 0;
           const delay = error.response.headers['retry-after']
@@ -56,12 +67,17 @@ export async function fetchEvents(
   const params: Record<string, string | number> = { limit };
   if (cursor) params.cursor = cursor;
 
-  const response = await getClient().get<FetchEventsResponse>('/events', {
+  const response = await getClient().get<FetchEventsResponse & { cursorExpiresIn?: number }>('/events', {
     params,
     headers: { 'X-API-Key': process.env.TARGET_API_KEY! },
   });
 
-  return response.data;
+  return {
+    data: response.data.data,
+    hasMore: response.data.hasMore,
+    nextCursor: response.data.nextCursor ?? null,
+    cursorExpiresIn: response.data.cursorExpiresIn,
+  };
 }
 
 // Reset client (useful for testing)
