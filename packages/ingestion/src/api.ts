@@ -3,9 +3,13 @@ import { parseRateLimitHeaders, shouldThrottle, calculateBackoff, sleep } from '
 
 export interface EventRecord {
   id: string;
-  event_type: string;
+  type: string;
+  name: string;
   timestamp: string | number;
-  payload: Record<string, unknown>;
+  properties: Record<string, unknown>;
+  sessionId?: string;
+  userId?: string;
+  session?: Record<string, unknown>;
 }
 
 export interface FetchEventsResponse {
@@ -60,6 +64,22 @@ function getClient(): AxiosInstance {
   return client;
 }
 
+// Actual API response shape (pagination is nested)
+interface ApiResponse {
+  data: EventRecord[];
+  pagination: {
+    hasMore: boolean;
+    nextCursor: string | null;
+    cursorExpiresIn?: number;
+    limit: number;
+  };
+  meta: {
+    total: number;
+    returned: number;
+    requestId: string;
+  };
+}
+
 export async function fetchEvents(
   cursor?: string | null,
   limit = 100
@@ -67,16 +87,16 @@ export async function fetchEvents(
   const params: Record<string, string | number> = { limit };
   if (cursor) params.cursor = cursor;
 
-  const response = await getClient().get<FetchEventsResponse & { cursorExpiresIn?: number }>('/events', {
+  const response = await getClient().get<ApiResponse>('/events', {
     params,
     headers: { 'X-API-Key': process.env.TARGET_API_KEY! },
   });
 
   return {
     data: response.data.data,
-    hasMore: response.data.hasMore,
-    nextCursor: response.data.nextCursor ?? null,
-    cursorExpiresIn: response.data.cursorExpiresIn,
+    hasMore: response.data.pagination.hasMore,
+    nextCursor: response.data.pagination.nextCursor ?? null,
+    cursorExpiresIn: response.data.pagination.cursorExpiresIn,
   };
 }
 

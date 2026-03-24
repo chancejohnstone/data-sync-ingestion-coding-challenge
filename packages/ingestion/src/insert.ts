@@ -13,9 +13,9 @@ export async function bulkInsert(events: EventRecord[]): Promise<number> {
     placeholders.push(`($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4})`);
     values.push(
       event.id,
-      event.event_type,
+      event.type,
       normalizeTimestamp(event.timestamp),
-      JSON.stringify(event.payload)
+      JSON.stringify({ name: event.name, properties: event.properties, sessionId: event.sessionId, userId: event.userId })
     );
   });
 
