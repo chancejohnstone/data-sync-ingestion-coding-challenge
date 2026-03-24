@@ -1,4 +1,5 @@
 import { runWorker } from './worker';
+import { query } from './db';
 
 const TARGET_EVENT_COUNT = parseInt(process.env.TARGET_EVENT_COUNT ?? '3000000', 10);
 const CONCURRENCY = parseInt(process.env.WORKER_CONCURRENCY ?? '5', 10);
@@ -14,13 +15,21 @@ export async function runCoordinator(): Promise<void> {
 
   console.log(`[${formatTime(new Date())}] Starting ingestion with ${CONCURRENCY} workers`);
 
-  // Progress reporter
-  const progressInterval = setInterval(() => {
-    const elapsed = (Date.now() - startTime) / 60_000; // minutes
-    const eventsPerMin = elapsed > 0 ? Math.round(totalInserted / elapsed) : 0;
-    console.log(
-      `[${formatTime(new Date())}] Events ingested: ${totalInserted.toLocaleString()} / ${TARGET_EVENT_COUNT.toLocaleString()} (${eventsPerMin.toLocaleString()} events/min)`
-    );
+  // Progress reporter — reads live count from DB checkpoint
+  const progressInterval = setInterval(async () => {
+    try {
+      const result = await query<{ events_ingested: number }>(
+        'SELECT events_ingested FROM ingestion_progress WHERE id = 1'
+      );
+      const liveCount = result.rows[0]?.events_ingested ?? totalInserted;
+      const elapsed = (Date.now() - startTime) / 60_000;
+      const eventsPerMin = elapsed > 0 ? Math.round(liveCount / elapsed) : 0;
+      console.log(
+        `[${formatTime(new Date())}] Events ingested: ${liveCount.toLocaleString()} / ${TARGET_EVENT_COUNT.toLocaleString()} (${eventsPerMin.toLocaleString()} events/min)`
+      );
+    } catch {
+      // DB not ready yet — skip this tick
+    }
   }, PROGRESS_INTERVAL_MS);
 
   try {
