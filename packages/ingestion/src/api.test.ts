@@ -13,7 +13,7 @@ describe('API client', () => {
 
   it('sends X-API-Key header on every request', async () => {
     const mockGet = vi.fn().mockResolvedValue({
-      data: { data: [], hasMore: false, nextCursor: null },
+      data: { data: [], pagination: { hasMore: false, nextCursor: null, limit: 100 }, meta: { total: 0, returned: 0, requestId: 'test' } },
       headers: {},
       status: 200,
     });
@@ -35,7 +35,7 @@ describe('API client', () => {
 
   it('does NOT use query param for auth', async () => {
     const mockGet = vi.fn().mockResolvedValue({
-      data: { data: [], hasMore: false, nextCursor: null },
+      data: { data: [], pagination: { hasMore: false, nextCursor: null, limit: 100 }, meta: { total: 0, returned: 0, requestId: 'test' } },
       headers: {},
       status: 200,
     });
