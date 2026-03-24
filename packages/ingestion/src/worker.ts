@@ -20,8 +20,23 @@ export async function runWorker(metrics?: WorkerMetrics): Promise<number> {
   const threshold = getCursorThreshold();
 
   while (true) {
-    if (isCursorStale(cursorRefreshedAt, threshold)) {
-      cursorRefreshedAt = new Date();
+    if (cursor && isCursorStale(cursorRefreshedAt, threshold)) {
+      try {
+        const refresh = await fetchEvents(cursor, 1);
+        if (refresh.nextCursor) {
+          cursor = refresh.nextCursor;
+          cursorRefreshedAt = new Date();
+          console.log('[worker] Proactive cursor keep-alive succeeded');
+        }
+      } catch (err) {
+        if (err instanceof CursorExpiredError) {
+          console.warn('[worker] Cursor expired during proactive keep-alive, restarting from null cursor');
+          cursor = null;
+          cursorRefreshedAt = null;
+          if (metrics) metrics.errors += 1;
+        }
+        // 429s retried automatically by axios interceptor
+      }
     }
 
     let response;
@@ -58,7 +73,7 @@ export async function runWorker(metrics?: WorkerMetrics): Promise<number> {
     if (!response.hasMore) break;
 
     // Dynamic rate limit pacing: burst until budget exhausted, then sleep the reset window
-    if ((response.rateLimitRemaining ?? 1) <= 1) {
+    if (response.rateLimitRemaining !== null && response.rateLimitRemaining <= 0) {
       const resetMs = (response.rateLimitReset ?? 60) * 1000;
       const responseReceivedAt = Date.now();
 
