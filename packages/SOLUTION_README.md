@@ -119,6 +119,36 @@ Discoveries pending:
 - Parallel segment support
 - ndjson streaming support
 
+## Attempted Optimization (Did Not Work as Intended)
+
+After the initial solution was complete, an optimized variant was developed to try to push throughput higher. The approach and what went wrong:
+
+### What Was Tried
+
+**`run-ingestion-optimized.sh`** sets `BATCH_SIZE=5000`, `WORKER_CONCURRENCY=1`, and `CURSOR_REFRESH_THRESHOLD=90`, then starts the same Docker stack.
+
+The worker loop was extended with two optimizations:
+
+1. **Dynamic rate-limit pacing** — instead of a fixed backoff on every request, the worker bursts at full speed until `X-RateLimit-Remaining` reaches 0, then sleeps exactly `X-RateLimit-Reset` seconds. This maximizes the number of requests per rate-limit window.
+
+2. **Cursor keep-alive during rate-limit sleep** — when sleeping for a rate-limit reset, if the cursor TTL would expire before the sleep window ends, the worker fires a lightweight `limit=1` fetch first to refresh the cursor, then sleeps the remainder. This prevents the cursor from expiring mid-sleep and forcing a re-scan from `cursor=null`.
+
+### What Went Wrong
+
+**The rate-limit sleep did fire** (`[worker] Rate limit exhausted, sleeping 32000ms`) after a fast burst of ~740,000 events. During the sleep, `eventsIngested` appeared stalled in the metrics log — it hadn't actually stalled, the cursor was advancing through pages, but no *net new* inserts were happening because those pages contained events already in the database from a prior run.
+
+Three bugs were found and fixed during debugging:
+
+| Bug | Symptom | Fix |
+|-----|---------|-----|
+| Cursor not updated when `nextCursor: null` | After completing a run with `hasMore: false`, checkpoint saved the second-to-last cursor, causing every re-run to re-fetch the last page and exit — stuck at 740k forever | Always assign `cursor = response.nextCursor` (even when null) |
+| Stale-cursor check was a no-op | `isCursorStale()` fired but only reset the timer, never made a keep-alive request — cursors expired silently during long rate-limit sleep sequences | Actually call `fetchEvents(cursor, 1)` in the stale-cursor branch |
+| `rateLimitRemaining ?? 1` false trigger | When the API omitted rate-limit headers, the fallback `1 <= 1` evaluated true and triggered an unnecessary sleep on every page | Changed to `!== null && <= 0` |
+
+Despite these fixes, the optimized version still did not complete a full 3M-event run reliably within testing, so it was not submitted. The working solution is `run-ingestion.sh`.
+
+---
+
 ## What I'd Improve with More Time
 
 1. **Segment-based parallelism** — if the API supports range/segment queries, assign each worker a non-overlapping segment instead of coordinating through a shared checkpoint
