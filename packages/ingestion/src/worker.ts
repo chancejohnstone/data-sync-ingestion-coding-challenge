@@ -56,8 +56,8 @@ export async function runWorker(metrics?: WorkerMetrics): Promise<number> {
     const inserted = await bulkInsert(response.data);
     totalInserted += inserted;
 
-    if (response.nextCursor) {
-      cursor = response.nextCursor;
+    cursor = response.nextCursor;
+    if (cursor) {
       cursorRefreshedAt = new Date();
     }
 

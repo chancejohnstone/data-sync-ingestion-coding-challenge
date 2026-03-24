@@ -19,7 +19,7 @@ export function parseRateLimitHeaders(headers: Record<string, string>): RateLimi
 }
 
 export function shouldThrottle(info: RateLimitInfo): boolean {
-  return info.remaining !== null && info.remaining < 10;
+  return info.remaining !== null && info.remaining <= 1;
 }
 
 export function calculateBackoff(attempt: number): number {
