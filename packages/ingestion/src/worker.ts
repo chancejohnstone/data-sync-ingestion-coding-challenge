@@ -57,7 +57,52 @@ export async function runWorker(metrics?: WorkerMetrics): Promise<number> {
 
     if (!response.hasMore) break;
 
-    await sleep(6000); // 10 req/60s = 1 req/6s
+    // Dynamic rate limit pacing: burst until budget exhausted, then sleep the reset window
+    if ((response.rateLimitRemaining ?? 1) <= 1) {
+      const resetMs = (response.rateLimitReset ?? 60) * 1000;
+      const responseReceivedAt = Date.now();
+
+      // Prevent cursor expiry during sleep: if the cursor would expire before the
+      // rate-limit window resets, make a keep-alive request before that happens.
+      const cursorLifeMs = (response.cursorExpiresIn ?? Infinity) * 1000;
+      const cursorAgeMs = cursorRefreshedAt ? responseReceivedAt - cursorRefreshedAt.getTime() : 0;
+      const cursorRemainingMs = cursorLifeMs - cursorAgeMs;
+      const KEEP_ALIVE_BUFFER_MS = 15_000;
+
+      if (isFinite(cursorRemainingMs) && resetMs > cursorRemainingMs - KEEP_ALIVE_BUFFER_MS) {
+        const preSleepMs = Math.max(0, cursorRemainingMs - KEEP_ALIVE_BUFFER_MS);
+        if (preSleepMs > 0) {
+          console.log(`[worker] Rate limit: sleeping ${preSleepMs}ms before cursor keep-alive`);
+          await sleep(preSleepMs);
+        }
+        console.log('[worker] Cursor keep-alive: refreshing before expiry');
+        try {
+          const keepAlive = await fetchEvents(cursor, 1);
+          if (keepAlive.nextCursor) {
+            cursor = keepAlive.nextCursor;
+            cursorRefreshedAt = new Date();
+            console.log('[worker] Cursor refreshed via keep-alive');
+          }
+        } catch (keepAliveErr) {
+          if (keepAliveErr instanceof CursorExpiredError) {
+            console.warn('[worker] Cursor expired during keep-alive, resetting');
+            cursor = null;
+            cursorRefreshedAt = null;
+            if (metrics) metrics.errors += 1;
+          }
+          // 429s are retried automatically by the axios interceptor
+        }
+        const elapsed = Date.now() - responseReceivedAt;
+        const remainingMs = Math.max(0, resetMs - elapsed);
+        if (remainingMs > 0) {
+          console.log(`[worker] Sleeping remaining ${remainingMs}ms after keep-alive`);
+          await sleep(remainingMs);
+        }
+      } else {
+        console.log(`[worker] Rate limit exhausted, sleeping ${resetMs}ms`);
+        await sleep(resetMs);
+      }
+    }
   }
 
   return totalInserted;
