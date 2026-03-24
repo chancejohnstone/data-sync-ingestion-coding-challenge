@@ -1,4 +1,4 @@
-import { runWorker } from './worker';
+import { runWorker, WorkerMetrics } from './worker';
 import { query } from './db';
 
 const TARGET_EVENT_COUNT = parseInt(process.env.TARGET_EVENT_COUNT ?? '3000000', 10);
@@ -13,6 +13,8 @@ export async function runCoordinator(): Promise<void> {
   const startTime = Date.now();
   let totalInserted = 0;
 
+  const sharedMetrics: WorkerMetrics = { errors: 0, pagesProcessed: 0, lastCursorAge: 0 };
+
   console.log(`[${formatTime(new Date())}] Starting ingestion with ${CONCURRENCY} workers`);
 
   // Progress reporter — reads live count from DB checkpoint
@@ -24,8 +26,21 @@ export async function runCoordinator(): Promise<void> {
       const liveCount = result.rows[0]?.events_ingested ?? totalInserted;
       const elapsed = (Date.now() - startTime) / 60_000;
       const eventsPerMin = elapsed > 0 ? Math.round(liveCount / elapsed) : 0;
+      const logMetrics = {
+        timestamp: new Date().toISOString(),
+        eventsIngested: liveCount,
+        target: TARGET_EVENT_COUNT,
+        pctComplete: ((liveCount / TARGET_EVENT_COUNT) * 100).toFixed(1),
+        throughputEventsPerMin: eventsPerMin,
+        etaMinutes: eventsPerMin > 0 ? ((TARGET_EVENT_COUNT - liveCount) / eventsPerMin).toFixed(1) : null,
+        errors: sharedMetrics.errors,
+        pagesProcessed: sharedMetrics.pagesProcessed,
+        cursorAgeSec: Math.round(sharedMetrics.lastCursorAge),
+      };
+      console.log(JSON.stringify(logMetrics));
       console.log(
-        `[${formatTime(new Date())}] Events ingested: ${liveCount.toLocaleString()} / ${TARGET_EVENT_COUNT.toLocaleString()} (${eventsPerMin.toLocaleString()} events/min)`
+        `[${formatTime(new Date())}] ${liveCount.toLocaleString()} / ${TARGET_EVENT_COUNT.toLocaleString()} ` +
+        `(${eventsPerMin.toLocaleString()} ev/min | ETA: ${logMetrics.etaMinutes}min | errors: ${sharedMetrics.errors})`
       );
     } catch {
       // DB not ready yet — skip this tick
@@ -39,7 +54,7 @@ export async function runCoordinator(): Promise<void> {
     const workerPromises: Promise<number>[] = [];
     for (let i = 0; i < CONCURRENCY; i++) {
       workerPromises.push(
-        runWorker().then((count) => {
+        runWorker(sharedMetrics).then((count) => {
           totalInserted += count;
           return count;
         })
@@ -54,6 +69,14 @@ export async function runCoordinator(): Promise<void> {
   const elapsed = (Date.now() - startTime) / 60_000;
   const finalRate = elapsed > 0 ? Math.round(totalInserted / elapsed) : 0;
 
-  console.log(`[${formatTime(new Date())}] Events ingested: ${totalInserted.toLocaleString()} / ${TARGET_EVENT_COUNT.toLocaleString()} (${finalRate.toLocaleString()} events/min)`);
+  const summary = {
+    status: 'complete',
+    totalEvents: totalInserted,
+    elapsedMinutes: elapsed.toFixed(1),
+    avgEventsPerMin: finalRate,
+    totalErrors: sharedMetrics.errors,
+    totalPages: sharedMetrics.pagesProcessed,
+  };
+  console.log(JSON.stringify(summary));
   console.log('ingestion complete');
 }

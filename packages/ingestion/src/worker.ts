@@ -6,7 +6,13 @@ import { sleep } from './ratelimit';
 
 const BATCH_SIZE = parseInt(process.env.BATCH_SIZE ?? '100', 10);
 
-export async function runWorker(): Promise<number> {
+export interface WorkerMetrics {
+  errors: number;
+  pagesProcessed: number;
+  lastCursorAge: number; // seconds since last cursor refresh
+}
+
+export async function runWorker(metrics?: WorkerMetrics): Promise<number> {
   const checkpoint = await loadCheckpoint();
   let cursor: string | null = checkpoint?.cursor ?? null;
   let totalInserted = checkpoint?.eventsIngested ?? 0;
@@ -26,6 +32,7 @@ export async function runWorker(): Promise<number> {
         console.warn('[worker] Cursor expired (502), restarting from null cursor');
         cursor = null;
         cursorRefreshedAt = null;
+        if (metrics) metrics.errors += 1;
         continue;
       }
       throw err;
@@ -40,6 +47,13 @@ export async function runWorker(): Promise<number> {
     }
 
     await saveCheckpoint(cursor, totalInserted);
+
+    if (metrics) {
+      metrics.pagesProcessed += 1;
+      if (cursorRefreshedAt) {
+        metrics.lastCursorAge = (Date.now() - cursorRefreshedAt.getTime()) / 1000;
+      }
+    }
 
     if (!response.hasMore) break;
 
