@@ -95,11 +95,12 @@ export async function fetchEvents(
   });
 
   const rl = parseRateLimitHeaders(response.headers as Record<string, string>);
+  const pagination = response.data.pagination ?? {};
   return {
-    data: response.data.data,
-    hasMore: response.data.pagination.hasMore,
-    nextCursor: response.data.pagination.nextCursor ?? null,
-    cursorExpiresIn: response.data.pagination.cursorExpiresIn,
+    data: response.data.data ?? [],
+    hasMore: pagination.hasMore ?? false,
+    nextCursor: pagination.nextCursor ?? null,
+    cursorExpiresIn: pagination.cursorExpiresIn,
     rateLimitRemaining: rl.remaining,
     rateLimitReset: rl.reset,
   };
